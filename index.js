@@ -6,14 +6,21 @@ require('dotenv').config();
 var enemies = [];
 var playerSpawnPoints = [];
 var clients = [];
-const PORT = process.env.PORT || 3001;
+const PORT = process.env.PORT || 5000;
 server.listen(PORT);
+console.log('here');
+
+app.get('/', function (req, res) {
+  res.send('hey you got back get "/"');
+});
 
 io.on('connection', function (socket) {
   console.log('connected');
   var currentPlayer = {};
   currentPlayer.name = 'unknown';
+
   socket.on('player connect', function () {
+    console.log(currentPlayer.name + ' recv: player connect');
     for (var i = 0; i < clients.length; i++) {
       var playerConnected = {
         name: clients[i].name,
@@ -23,9 +30,12 @@ io.on('connection', function (socket) {
       };
       // in your current game, we need to tell you about the other players.
       socket.emit('other player connected', playerConnected);
+      console.log(currentPlayer.name + ' emit: other player connected: ' + JSON.stringify(playerConnected));
     }
   });
+
   socket.on('play', function (data) {
+    console.log(currentPlayer.name + ' recv: play: ' + JSON.stringify(data));
     // if this is the first person to join the game init the enemies
     if (clients.length === 0) {
       numberOfEnemies = data.enemySpawnPoints.length;
@@ -48,10 +58,12 @@ io.on('connection', function (socket) {
         playerSpawnPoints.push(playerSpawnPoint);
       });
     }
+
     var enemiesResponse = {
       enemies: enemies,
     };
     // we always will send the enemies when the player joins
+    console.log(currentPlayer.name + ' emit: enemies: ' + JSON.stringify(enemiesResponse));
     socket.emit('enemies', enemiesResponse);
     var randomSpawnPoint = playerSpawnPoints[Math.floor(Math.random() * playerSpawnPoints.length)];
     currentPlayer = {
@@ -62,26 +74,36 @@ io.on('connection', function (socket) {
     };
     clients.push(currentPlayer);
     // in your current game, tell you that you have joined
+    console.log(' emit: play: ');
     socket.emit('play', currentPlayer);
     // in your current game, we need to tell the other players about you.
-    socket.broadcast.emit('other player connected', currentPlayer);
+    socket.broadcast.emit('other player connected');
   });
+
   socket.on('player move', function (data) {
+    console.log('recv: move: ');
     currentPlayer.position = data.position;
     socket.broadcast.emit('player move', currentPlayer);
   });
+
   socket.on('player turn', function (data) {
+    console.log('recv: turn: ');
     currentPlayer.rotation = data.rotation;
     socket.broadcast.emit('player turn', currentPlayer);
   });
+
   socket.on('player shoot', function () {
+    console.log(' recv: shoot');
     var data = {
       name: currentPlayer.name,
     };
+    console.log(' bcst: shoot: ');
     socket.emit('player shoot', data);
     socket.broadcast.emit('player shoot', data);
   });
+
   socket.on('health', function (data) {
+    console.log(' recv: health: ');
     // only change the health once, we can do this by checking the originating player
     if (data.from === currentPlayer.name) {
       var indexDamaged = 0;
@@ -102,16 +124,21 @@ io.on('connection', function (socket) {
           return enemy;
         });
       }
+
       var response = {
         name: !data.isEnemy ? clients[indexDamaged].name : enemies[indexDamaged].name,
         health: !data.isEnemy ? clients[indexDamaged].health : enemies[indexDamaged].health,
       };
+      console.log(' bcst: health: ');
       socket.emit('health', response);
       socket.broadcast.emit('health', response);
     }
   });
+
   socket.on('disconnect', function () {
+    console.log(' recv: disconnect ');
     socket.broadcast.emit('other player disconnected', currentPlayer);
+
     for (var i = 0; i < clients.length; i++) {
       if (clients[i].name === currentPlayer.name) {
         clients.splice(i, 1);
@@ -119,7 +146,9 @@ io.on('connection', function (socket) {
     }
   });
 });
+
 console.log('--- server is running ...');
+
 function guid() {
   function s4() {
     return Math.floor((1 + Math.random()) * 0x10000)
