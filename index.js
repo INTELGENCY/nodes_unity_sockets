@@ -1,51 +1,51 @@
-// pages/api/socket.js
-const { Server } = require('ws');
+const express = require('express');
+const expressWs = require('express-ws');
+require('dotenv').config();
 
-const server = new Server();
+const app = express();
+expressWs(app);
 
-// global variables for the server
-var enemies = [];
-var playerSpawnPoints = [];
-var clients = [];
+// Global variables for the server
+let enemies = [];
+let playerSpawnPoints = [];
+let clients = [];
 
-server.on('connection', socket => {
+app.ws('/api/socket', (ws, req) => {
   console.log('A user connected');
 
-  var currentPlayer = {};
+  let currentPlayer = {};
   currentPlayer.name = 'unknown';
 
-  socket.on('message', data => {
+  ws.on('message', data => {
     console.log('Message from client:', data);
-    socket.send(`Server: ${data}`);
+    ws.send(`Server: ${data}`);
   });
 
-  socket.on('close', () => {
+  ws.on('close', () => {
     console.log('A user disconnected');
   });
 
-  socket.on('player connect', () => {
+  ws.on('player connect', () => {
     console.log(currentPlayer.name + ' recv: player connect');
-    for (var i = 0; i < clients.length; i++) {
-      var playerConnected = {
+    for (let i = 0; i < clients.length; i++) {
+      const playerConnected = {
         name: clients[i].name,
         position: clients[i].position,
         rotation: clients[i].position,
         health: clients[i].health,
       };
-      // in your current game, we need to tell you about the other players.
-      socket.emit('other player connected', playerConnected);
+      ws.emit('other player connected', playerConnected);
       console.log(currentPlayer.name + ' emit: other player connected: ' + JSON.stringify(playerConnected));
     }
   });
 
-  socket.on('play', data => {
+  ws.on('play', data => {
     console.log(currentPlayer.name + ' recv: play: ' + JSON.stringify(data));
-    // if this is the first person to join the game init the enemies
     if (clients.length === 0) {
-      var numberOfEnemies = data.enemySpawnPoints.length;
+      const numberOfEnemies = data.enemySpawnPoints.length;
       enemies = [];
       data.enemySpawnPoints.forEach(enemySpawnPoint => {
-        var enemy = {
+        const enemy = {
           name: guid(),
           position: enemySpawnPoint.position,
           rotation: enemySpawnPoint.rotation,
@@ -56,7 +56,7 @@ server.on('connection', socket => {
 
       playerSpawnPoints = [];
       data.playerSpawnPoints.forEach(_playerSpawnPoint => {
-        var playerSpawnPoint = {
+        const playerSpawnPoint = {
           position: _playerSpawnPoint.position,
           rotation: _playerSpawnPoint.rotation,
         };
@@ -64,15 +64,14 @@ server.on('connection', socket => {
       });
     }
 
-    var enemiesResponse = {
+    const enemiesResponse = {
       enemies: enemies,
     };
 
-    // we always will send the enemies when the player joins
     console.log(currentPlayer.name + ' emit: enemies: ' + JSON.stringify(enemiesResponse));
-    socket.emit('enemies', enemiesResponse);
+    ws.emit('enemies', enemiesResponse);
 
-    var randomSpawnPoint = playerSpawnPoints[Math.floor(Math.random() * playerSpawnPoints.length)];
+    const randomSpawnPoint = playerSpawnPoints[Math.floor(Math.random() * playerSpawnPoints.length)];
 
     currentPlayer = {
       name: data.name,
@@ -83,42 +82,39 @@ server.on('connection', socket => {
 
     clients.push(currentPlayer);
 
-    // in your current game, tell you that you have joined
     console.log(currentPlayer.name + ' emit: play: ' + JSON.stringify(currentPlayer));
-    socket.emit('play', currentPlayer);
+    ws.emit('play', currentPlayer);
 
-    // in your current game, we need to tell the other players about you.
-    socket.broadcast.emit('other player connected', currentPlayer);
+    ws.broadcast.emit('other player connected', currentPlayer);
   });
 
-  socket.on('player move', data => {
+  ws.on('player move', data => {
     console.log('recv: move: ' + JSON.stringify(data));
     currentPlayer.position = data.position;
-    socket.broadcast.emit('player move', currentPlayer);
+    ws.broadcast.emit('player move', currentPlayer);
   });
 
-  socket.on('player turn', data => {
+  ws.on('player turn', data => {
     console.log('recv: turn: ' + JSON.stringify(data));
     currentPlayer.rotation = data.rotation;
-    socket.broadcast.emit('player turn', currentPlayer);
+    ws.broadcast.emit('player turn', currentPlayer);
   });
 
-  socket.on('player shoot', () => {
+  ws.on('player shoot', () => {
     console.log(currentPlayer.name + ' recv: shoot');
-    var data = {
+    const data = {
       name: currentPlayer.name,
     };
     console.log(currentPlayer.name + ' bcst: shoot: ' + JSON.stringify(data));
-    socket.emit('player shoot', data);
-    socket.broadcast.emit('player shoot', data);
+    ws.emit('player shoot', data);
+    ws.broadcast.emit('player shoot', data);
   });
 
-  socket.on('health', data => {
+  ws.on('health', data => {
     console.log(currentPlayer.name + ' recv: health: ' + JSON.stringify(data));
 
-    // only change the health once, we can do this by checking the originating player
     if (data.from === currentPlayer.name) {
-      var indexDamaged = 0;
+      let indexDamaged = 0;
 
       if (!data.isEnemy) {
         clients = clients.map((client, index) => {
@@ -138,23 +134,23 @@ server.on('connection', socket => {
         });
       }
 
-      var response = {
+      const response = {
         name: !data.isEnemy ? clients[indexDamaged].name : enemies[indexDamaged].name,
         health: !data.isEnemy ? clients[indexDamaged].health : enemies[indexDamaged].health,
       };
 
       console.log(currentPlayer.name + ' bcst: health: ' + JSON.stringify(response));
-      socket.emit('health', response);
-      socket.broadcast.emit('health', response);
+      ws.emit('health', response);
+      ws.broadcast.emit('health', response);
     }
   });
 
-  socket.on('disconnect', () => {
+  ws.on('disconnect', () => {
     console.log(currentPlayer.name + ' recv: disconnect ' + currentPlayer.name);
-    socket.broadcast.emit('other player disconnected', currentPlayer);
+    ws.broadcast.emit('other player disconnected', currentPlayer);
     console.log(currentPlayer.name + ' bcst: other player disconnected ' + JSON.stringify(currentPlayer));
 
-    for (var i = 0; i < clients.length; i++) {
+    for (let i = 0; i < clients.length; i++) {
       if (clients[i].name === currentPlayer.name) {
         clients.splice(i, 1);
       }
@@ -172,3 +168,8 @@ function guid() {
   }
   return s4() + s4() + '-' + s4() + '-' + s4() + '-' + s4() + '-' + s4() + s4() + s4();
 }
+console.log(process.env.PORT);
+const PORT = process.env.PORT || 3001;
+app.listen(PORT, () => {
+  console.log(`Server is running on http://localhost:${PORT}`);
+});
